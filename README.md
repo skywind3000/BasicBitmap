@@ -50,6 +50,10 @@ Blitting performance in SDL & GDI are slower than DirectDraw, just compare to dd
 | BasicBitmap AVX/SSE2 | fps=18181 |  fps=5449   |
 | DirectDraw BltFast   | fps=14705 |  fps=4832   |
 
+DirectDrawSurface in Video Memory takes hardware acceleration benefit which is faster than all software implementations. If you really need hardware acceleration, use OpenGL as well. This is software implementation, so just compare to DirectDrawSurface in System Memory. Use it in the condition that you only need a lightweight software solution (eg. GUI/Cross Platform/hardware unavailable/image processing/video compositing).
+
+
+
 Blending Performance
 ----------------------
 
