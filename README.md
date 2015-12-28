@@ -50,7 +50,11 @@ Blitting performance in SDL & GDI are slower than DirectDraw, just compare to dd
 | BasicBitmap AVX/SSE2 | fps=18181 |  fps=5449   |
 | DirectDraw BltFast   | fps=14705 |  fps=4832   |
 
-DirectDrawSurface in *Video Memory* takes the benefit of hardware acceleration to achieve the best performance than all software implementations. If you really need hardware acceleration, use OpenGL/DX as well. *BasicBitmap* is a software implementation which aims to beat all other software implementations (like GDI/GDI+, DirectDraw/SDL in System Memory, for examples), so just compare to DirectDrawSurface in *System Memory*. Use it in the condition that you only need a lightweight software solution (eg. GUI/Cross Platform/hardware unavailable/image processing/video compositing).
+DirectDrawSurface in *Video Memory* takes the benefit of hardware acceleration which is definitely faster than BasicBitmap. If you really need hardware acceleration, use OpenGL/DX as well. 
+
+*BasicBitmap* is a software implementation which aims to achieve the best performance in all other software implementations (like GDI/GDI+, DirectDraw/SDL in System Memory, for examples).
+
+So just compare to DirectDrawSurface in *System Memory*. Use it in the condition that you only need a lightweight software solution (eg. GUI/Cross Platform/hardware unavailable/image processing/video compositing).
 
 
 
