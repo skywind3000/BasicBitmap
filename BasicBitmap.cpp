@@ -1303,7 +1303,7 @@ IUINT32 BasicBitmap::GetPixel(int x, int y) const
 {
 	if ((unsigned int)x >= (unsigned int)_w) return 0;
 	if ((unsigned int)y >= (unsigned int)_h) return 0;
-	IUINT8 *bits = (IUINT8*)Line(y);
+	const IUINT8 *bits = (const IUINT8*)Line(y);
 	IUINT32 cc = 0;
 	switch (_pixelsize) {
 	case 1: cc = _pixel_fetch(8, bits, x); break;
@@ -1312,6 +1312,107 @@ IUINT32 BasicBitmap::GetPixel(int x, int y) const
 	case 4: cc = _pixel_fetch(32, bits, x); break;
 	}
 	return cc;
+}
+
+
+//---------------------------------------------------------------------
+// Get A8R8G8B8 from position, different from GetPixel, GetPixel 
+// returns raw pixel GetColor will convert raw pixel to A8R8G8B8
+//---------------------------------------------------------------------
+IUINT32 BasicBitmap::GetColor(int x, int y) const
+{
+	if ((unsigned int)x >= (unsigned int)_w) return 0;
+	if ((unsigned int)y >= (unsigned int)_h) return 0;
+	const IUINT8 *bits = (const IUINT8*)Line(y);
+	IUINT32 cc = 0, r = 0, g = 0, b = 0, a = 0;
+	switch (_fmt) {
+	case G8:
+		cc = _pixel_fetch(8, bits, x);
+		cc = RGBA_TO_A8R8G8B8(255, cc, cc, cc);
+		break;
+	case X1R5G5B5:
+		cc = _pixel_fetch(16, bits, x);
+		RGBA_FROM_X1R5G5B5(cc, r, g, b, a);
+		cc = RGBA_TO_A8R8G8B8(r, g, b, a);
+		break;
+	case A1R5G5B5:
+		cc = _pixel_fetch(16, bits, x);
+		RGBA_FROM_A1R5G5B5(cc, r, g, b, a);
+		cc = RGBA_TO_A8R8G8B8(r, g, b, a);
+		break;
+	case A4R4G4B4:
+		cc = _pixel_fetch(16, bits, x);
+		RGBA_FROM_A4R4G4B4(cc, r, g, b, a);
+		cc = RGBA_TO_A8R8G8B8(r, g, b, a);
+		break;
+	case R5G6B5:
+		cc = _pixel_fetch(16, bits, x);
+		RGBA_FROM_R5G6B5(cc, r, g, b, a);
+		cc = RGBA_TO_A8R8G8B8(r, g, b, a);
+		break;
+	case R8G8B8:
+		cc = _pixel_fetch(24, bits, x) | 0xff000000;
+		break;
+	case X8R8G8B8:
+		cc = _pixel_fetch(32, bits, x) | 0xff000000;
+		break;
+	case UNKNOW:
+	case A8R8G8B8:
+		cc = _pixel_fetch(32, bits, x);
+		break;
+	}
+	return cc;
+}
+
+
+//---------------------------------------------------------------------
+// Set A8R8G8B8 to position, SetPixel set raw pixel, SetColor will
+// convert A8R8G8B8 to raw pixel format then set to position
+//---------------------------------------------------------------------
+void BasicBitmap::SetColor(int x, int y, IUINT32 RGBA)
+{
+	if ((unsigned int)x >= (unsigned int)_w) return;
+	if ((unsigned int)y >= (unsigned int)_h) return;
+	IUINT8 *bits = (IUINT8*)Line(y);
+	IUINT32 r, g, b, a, c;
+	switch (_fmt) {
+	case G8:
+		RGBA_FROM_A8R8G8B8(RGBA, r, g, b, a);
+		c = _pixel_to_gray(r, g, b);
+		_pixel_store(8, bits, x, c); 
+		break;
+	case X1R5G5B5:
+		RGBA_FROM_A8R8G8B8(RGBA, r, g, b, a);
+		c = RGBA_TO_X1R5G5B5(r, g, b, a);
+		_pixel_store(16, bits, x, c); 
+		break;
+	case A1R5G5B5:
+		RGBA_FROM_A8R8G8B8(RGBA, r, g, b, a);
+		c = RGBA_TO_A1R5G5B5(r, g, b, a);
+		_pixel_store(16, bits, x, c); 
+		break;
+	case R5G6B5:
+		RGBA_FROM_A8R8G8B8(RGBA, r, g, b, a);
+		c = RGBA_TO_R5G6B5(r, g, b, a);
+		_pixel_store(16, bits, x, c); 
+		break;
+	case A4R4G4B4:
+		RGBA_FROM_A8R8G8B8(RGBA, r, g, b, a);
+		c = RGBA_TO_A4R4G4B4(r, g, b, a);
+		_pixel_store(16, bits, x, c); 
+		break;
+	case R8G8B8:
+		c = RGBA & 0xffffff;
+		_pixel_store(24, bits, x, c); 
+		break;
+	case X8R8G8B8:
+		_pixel_store(32, bits, x, (RGBA & 0xffffff)); 
+	case A8R8G8B8:
+		_pixel_store(32, bits, x, RGBA);
+		break;
+	case UNKNOW:
+		break;
+	}
 }
 
 
@@ -3112,12 +3213,14 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 	else if (mode & PIXEL_FLAG_ADDITIVE) draw = GetDriver(dfmt, 2, false);
 	else if (mode & PIXEL_FLAG_SRCCOPY) draw = NULL;
 
+	IINT32 offx = (sw == dw)? 0 : 0x8000;
+	IINT32 offy = (sh == dh)? 0 : 0x8000;
 	IINT32 incx = (sw << 16) / dw;
 	IINT32 incy = (sh << 16) / dh;
-	IINT32 starty = sy << 16;
+	IINT32 starty = (sy << 16) + offy;
 
 	if (mode & PIXEL_FLAG_VFLIP) {
-		starty = (sy + sh - 1) << 16;
+		starty = ((sy + sh - 1) << 16) - offy;
 	}
 
 	InterpRow interprow = InterpolateRowNearest;
@@ -3136,9 +3239,9 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 	int depth = src->Bpp();
 	int need = (depth != 32)? (sw * 2) : 0;
 
-	IUINT32 *buffer = (IUINT32*)internal_align_malloc((sw + 2 + dw + need) * 4, 16);
+	IUINT32 *buffer = (IUINT32*)internal_align_malloc((sw + 4 + dw + need) * 4, 16);
 	IUINT32 *srcrow = buffer;
-	IUINT32 *cache = buffer + sw + 2;
+	IUINT32 *cache = buffer + sw + 4;
 	IUINT32 *scanline1 = cache + dw;
 	IUINT32 *scanline2 = scanline1 + sw;
 	IUINT32 *srcline = NULL;
@@ -3152,29 +3255,34 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 		if ((mode & PIXEL_FLAG_VFLIP) == 0) {
 			int y1 = starty >> 16;
 			int y2 = y1 + 1;
-			int yl = src->_h - 1;
+			int my = src->_h - 1;
+			y1 = (y1 < 0)? 0 : ((y1 > my)? my : y1);
+			y2 = (y2 < 0)? 0 : ((y2 > my)? my : y2);
 			if (depth == 32) {
-				row1 = ((const IUINT32*)src->Line((y1 > yl)? yl : y1)) + sx;
-				row2 = ((const IUINT32*)src->Line((y2 > yl)? y1 : y2)) + sx;
+				row1 = ((const IUINT32*)src->Line(y1)) + sx;
+				row2 = ((const IUINT32*)src->Line(y2)) + sx;
 			}	else {
 				row1 = scanline1;
 				row2 = scanline2;
-				src->RowFetch(sx, (y1 > yl)? yl : y1, scanline1, sw);
-				src->RowFetch(sx, (y2 > yl)? y1 : y2, scanline2, sw);
+				src->RowFetch(sx, y1, scanline1, sw);
+				src->RowFetch(sx, y2, scanline2, sw);
 			}
 			fraction = starty & 0xffff;
 			starty += incy;
 		}	else {
 			int y1 = (starty + 0xffff) >> 16;
 			int y2 = y1 - 1;
+			int my = src->_h - 1;
+			y1 = (y1 < 0)? 0 : ((y1 > my)? my : y1);
+			y2 = (y2 < 0)? 0 : ((y2 > my)? my : y2);
 			if (depth == 32) {
-				row1 = ((const IUINT32*)src->Line((y1 < 0)? 0 : y1)) + sx;
-				row2 = ((const IUINT32*)src->Line((y2 < 0)? 0 : y2)) + sx;
+				row1 = ((const IUINT32*)src->Line(y1)) + sx;
+				row2 = ((const IUINT32*)src->Line(y2)) + sx;
 			}	else {
 				row1 = scanline1;
 				row2 = scanline2;
-				src->RowFetch(sx, (y1 < 0)? 0 : y1, scanline1, sw);
-				src->RowFetch(sx, (y2 < 0)? 0 : y2, scanline2, sw);
+				src->RowFetch(sx, y1, scanline1, sw);
+				src->RowFetch(sx, y2, scanline2, sw);
 			}
 			fraction = 0x10000 - (starty & 0xffff);
 			starty -= incy;
@@ -3193,6 +3301,7 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 
 		// repeat right edge for linear interpolation
 		srcrow[sw] = srcrow[sw - 1];
+		srcrow[sw + 1] = srcrow[sw - 1];
 
 		if (color != 0xffffffff) {
 			CardMultiply(srcrow, sw, color);
@@ -3203,10 +3312,10 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 				Store(dfmt, dstrow, dx, dw, srcrow);
 			}	
 			else if (_bpp == 32) {
-				interpcol(((IUINT32*)dstrow) + dx, dw, srcrow, 0, incx);
+				interpcol(((IUINT32*)dstrow) + dx, dw, srcrow, offx, incx);
 			}
 			else {
-				interpcol(cache, dw, srcrow, 0, incx);
+				interpcol(cache, dw, srcrow, offx, incx);
 				Store(dfmt, dstrow, dx, dw, cache);
 			}
 		}
@@ -3214,7 +3323,7 @@ void BasicBitmap::Scale(int dx, int dy, int dw, int dh, const BasicBitmap *src,
 			if (dw == sw) {
 				srcline = srcrow;
 			}	else {
-				interpcol(cache, dw, srcrow, 0, incx);
+				interpcol(cache, dw, srcrow, offx, incx);
 				srcline = cache;
 			}
 			draw(dstrow, dx, dw, srcline);
@@ -4886,6 +4995,222 @@ int BasicBitmap::SetBlock(int x, int y, const int *block, int w, int h)
 		}
 	}
 	return 0;
+}
+
+
+//---------------------------------------------------------------------
+// BilinearSampler
+//---------------------------------------------------------------------
+static inline IUINT32 _pixel_biline_interp (IUINT32 tl, IUINT32 tr,
+	IUINT32 bl, IUINT32 br, IINT32 distx, IINT32 disty)
+{
+    IINT32 distxy, distxiy, distixy, distixiy;
+    IUINT32 f, r;
+
+    distxy = distx * disty;
+    distxiy = (distx << 8) - distxy;	/* distx * (256 - disty) */
+    distixy = (disty << 8) - distxy;	/* disty * (256 - distx) */
+    distixiy =
+	256 * 256 - (disty << 8) -
+	(distx << 8) + distxy;		/* (256 - distx) * (256 - disty) */
+
+    /* Blue */
+    r = (tl & 0x000000ff) * distixiy + (tr & 0x000000ff) * distxiy
+      + (bl & 0x000000ff) * distixy  + (br & 0x000000ff) * distxy;
+
+    /* Green */
+    f = (tl & 0x0000ff00) * distixiy + (tr & 0x0000ff00) * distxiy
+      + (bl & 0x0000ff00) * distixy  + (br & 0x0000ff00) * distxy;
+    r |= f & 0xff000000;
+
+    tl >>= 16;
+    tr >>= 16;
+    bl >>= 16;
+    br >>= 16;
+    r >>= 16;
+
+    /* Red */
+    f = (tl & 0x000000ff) * distixiy + (tr & 0x000000ff) * distxiy
+      + (bl & 0x000000ff) * distixy  + (br & 0x000000ff) * distxy;
+    r |= f & 0x00ff0000;
+
+    /* Alpha */
+    f = (tl & 0x0000ff00) * distixiy + (tr & 0x0000ff00) * distxiy
+      + (bl & 0x0000ff00) * distixy  + (br & 0x0000ff00) * distxy;
+    r |= f & 0xff000000;
+
+    return r;
+}
+
+// calculate bilinear pixel
+IUINT32 BasicBitmap::SampleBilinear(float x, float y, bool repeat) const
+{
+	IUINT32 c00, c01, c10, c11;
+	IINT32 fx = (IINT32)(x * 0x10000);
+	IINT32 fy = (IINT32)(y * 0x10000);
+	int x1 = fx >> 16;
+	int y1 = fy >> 16;
+	int x2 = x1 + 1;
+	int y2 = y1 + 1;
+	int dx = (fx >> 8) & 0xff;
+	int dy = (fy >> 8) & 0xff;
+	if (repeat) {
+		if (_w <= 0 || _h <= 0) return 0;
+		if (x1 < 0) x1 = 0;
+		if (y1 < 0) y1 = 0;
+		if (x2 < 0) x2 = 0;
+		if (y2 < 0) y2 = 0;
+		if (x1 >= _w) x1 = _w - 1;
+		if (y1 >= _h) y1 = _h - 1;
+		if (x2 >= _w) x2 = _w - 1;
+		if (y2 >= _h) y2 = _h - 1;
+	}
+	c00 = GetColor(x1, y1);
+	c01 = GetColor(x2, y1);
+	c10 = GetColor(x1, y2);
+	c11 = GetColor(x2, y2);
+	return _pixel_biline_interp(c00, c01, c10, c11, dx, dy);
+}
+
+
+//---------------------------------------------------------------------
+// BicubicSampler
+//---------------------------------------------------------------------
+static inline int _pixel_middle(int x, int xmin, int xmax) {
+	if (x < xmin) return xmin;
+	if (x > xmax) return xmax;
+	return x;
+}
+
+inline int _pixel_abs(int x) {
+	return (x < 0)? (-x) : x;
+}
+
+static inline float _pixel_bicubic(float x) {
+	if (x == 0.0f) return 1.0f;
+	if (x < 0.0f) x = -x;
+	float a = -0.5f;
+	float x2 = x * x;
+	float x3 = x2 * x;
+	if (x <= 1.0f) return x3 * (a + 2.0f) - x2 * (a + 3.0f) + 1.0f;
+	if (x <= 2.0f) return x3 * a - x2 * a * 5.0f + 8.0f * a * x - 4.0f * a;
+	return 0.0f;
+}
+
+IUINT32 BasicBitmap::SampleBicubic(float x, float y, bool repeat) const
+{
+	float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
+	IINT32 fx = (IINT32)(x * 0x10000);
+	IINT32 fy = (IINT32)(y * 0x10000);
+	int xi = (fx >> 16);
+	int yi = (fy >> 16);
+	float x0 = (float)(xi - 1);
+	float y0 = (float)(yi - 1);
+	int sx[4];
+	int sy[4];
+	float wx[4];
+	float wy[4];
+	sx[0] = xi - 1;
+	sx[1] = xi;
+	sx[2] = xi + 1;
+	sx[3] = xi + 2;
+	sy[0] = yi - 1;
+	sy[1] = yi;
+	sy[2] = yi + 1;
+	sy[3] = yi + 2;
+	if (repeat) {
+		sx[0] = _pixel_middle(sx[0], 0, _w - 1);
+		sx[1] = _pixel_middle(sx[1], 0, _w - 1);
+		sx[2] = _pixel_middle(sx[2], 0, _w - 1);
+		sx[3] = _pixel_middle(sx[3], 0, _w - 1);
+		sy[0] = _pixel_middle(sy[0], 0, _h - 1);
+		sy[1] = _pixel_middle(sy[1], 0, _h - 1);
+		sy[2] = _pixel_middle(sy[2], 0, _h - 1);
+		sy[3] = _pixel_middle(sy[3], 0, _h - 1);
+	}
+	wx[0] = _pixel_bicubic(x - (x0 + 0.0f));
+	wx[1] = _pixel_bicubic(x - (x0 + 1.0f));
+	wx[2] = _pixel_bicubic(x - (x0 + 2.0f));
+	wx[3] = _pixel_bicubic(x - (x0 + 3.0f));
+	wy[0] = _pixel_bicubic(y - (y0 + 0.0f));
+	wy[1] = _pixel_bicubic(y - (y0 + 1.0f));
+	wy[2] = _pixel_bicubic(y - (y0 + 2.0f));
+	wy[3] = _pixel_bicubic(y - (y0 + 3.0f));
+	for (int j = 0; j < 4; j++) {
+		for (int i = 0; i < 4; i++) {
+			float weight = wx[i] * wy[j];
+			IUINT32 color = GetColor(sx[i], sy[j]);
+			r = r + weight * ((color & 0xff0000) >> 16);
+			g = g + weight * ((color & 0xff00) >> 8);
+			b = b + weight * ((color & 0xff) >> 0);
+			a = a + weight * ((color & 0xff000000) >> 24);
+		}
+	}
+	IUINT32 r1 = (int)r;
+	IUINT32 g1 = (int)g;
+	IUINT32 b1 = (int)b;
+	IUINT32 a1 = (int)a;
+	r1 = _pixel_middle(r1, 0, 255);
+	g1 = _pixel_middle(g1, 0, 255);
+	b1 = _pixel_middle(b1, 0, 255);
+	a1 = _pixel_middle(a1, 0, 255);
+#if 0
+	IUINT32 r2, g2, b2, a2;
+	IUINT32 ci = GetColor(xi, yi);
+	RGBA_FROM_A8R8G8B8(ci, r2, g2, b2, a2);
+	if (_pixel_abs(r1 - r2) > 198 || _pixel_abs(g1 - g2) > 198 ||
+		_pixel_abs(b1 - b2) > 198 || _pixel_abs(a1 - a2) > 198)
+		return ci;
+#endif
+	return RGBA_TO_A8R8G8B8(r1, g1, b1, a1);
+}
+
+
+//---------------------------------------------------------------------
+// Resample
+//---------------------------------------------------------------------
+void BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
+	int sx, int sy, int sw, int sh, int method, bool repeat)
+{
+	if (sw == dw && sh == dh) {
+		Convert(dx, dy, src, sx, sy, sw, sh, 0);
+		return;
+	}
+	float incx = ((float)sw) / ((float)dw);
+	float incy = ((float)sh) / ((float)dh);
+	for (int j = 0; j < dh; j++) {
+		float y = (float)sy + j * incy + 0.5f;
+		float x = (float)sx + 0.5f;
+		for (int i = 0; i < dw; i++) {
+			IUINT32 color = 0;
+			switch (method) {
+			case 0:
+				color = src->GetColor((int)x, (int)y);
+				break;
+			case 1:
+				color = src->SampleBilinear(x, y, repeat);
+				break;
+			case 2:
+				color = src->SampleBicubic(x, y, repeat);
+				break;
+			}
+			SetColor(dx + i, dy + j, color);
+			x += incx;
+		}
+	}
+}
+
+
+//---------------------------------------------------------------------
+// return an new resampled bitmap
+//---------------------------------------------------------------------
+BasicBitmap *BasicBitmap::Resample(int NewWidth, int NewHeight, int method, bool repeat) const
+{
+	if (NewWidth <= 0 || NewHeight <= 0) return NULL;
+	BasicBitmap *bmp = new BasicBitmap(NewWidth, NewHeight, _fmt);
+	if (bmp == NULL) return NULL;
+	bmp->Resample(0, 0, NewWidth, NewHeight, this, 0, 0, _w, _h, method, repeat);
+	return bmp;
 }
 
 

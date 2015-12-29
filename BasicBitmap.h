@@ -561,6 +561,14 @@ public:
 	void BresenhamStretch(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
 		int sx, int sy, int sw, int sh, int mode);
 
+	// Get A8R8G8B8 from position, different from GetPixel, GetPixel returns raw pixel
+	// GetColor will convert raw pixel to A8R8G8B8
+	IUINT32 GetColor(int x, int y) const;
+
+	// Set A8R8G8B8 to position, SetPixel set raw pixel, GetColor will convert A8R8G8B8
+	// to raw pixel format then set to position
+	void SetColor(int x, int y, IUINT32 RGBA);
+
 public:
 	inline int Width() const { return _w; }
 	inline int Height() const { return _h; }
@@ -619,6 +627,18 @@ public:
 	// for show frame rate, debug info, etc.
 	void QuickText(int x, int y, const char *text, IUINT32 color);
 
+	// BilinearSampler, (x, y) is float point position
+	IUINT32 SampleBilinear(float x, float y, bool repeat = true) const;
+
+	// BicubicSampler, (x, y) is float point position
+	IUINT32 SampleBicubic(float x, float y, bool repeat = true) const;
+
+	// method=0:nearest, 1:bilinear, 2:bicubic
+	void Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
+		int sx, int sy, int sw, int sh, int method, bool repeat = true);
+
+	// return an new resampled bitmap
+	BasicBitmap *Resample(int NewWidth, int NewHeight, int method, bool repeat = true) const;
 
 public:
 
