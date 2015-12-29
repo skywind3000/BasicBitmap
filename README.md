@@ -8,7 +8,7 @@ As the purpose of providing a simple compact, high-performance and platform inde
 - Converting between different pixel formats
 - Blending with different compositors
 - Scaling with different filters (nearest, linear, bilinear)
-- High quality resampling to different size
+- High quality resampling to different size (Bicubic/Bilinear)
 - Loading bmp/tga from memory or file and saving bmp to file
 - Loading png/jpg with gdiplus (only in windows xp or above)
 - Saving bmp/ppm files
