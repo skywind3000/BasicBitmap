@@ -112,6 +112,24 @@
     typedef ISTDUINT32 IUINT32;
 #endif
 
+#ifndef __IINT64_DEFINED
+#define __IINT64_DEFINED
+#if defined(_MSC_VER) || defined(__BORLANDC__)
+typedef __int64 IINT64;
+#else
+typedef long long IINT64;
+#endif
+#endif
+
+#ifndef __IUINT64_DEFINED
+#define __IUINT64_DEFINED
+#if defined(_MSC_VER) || defined(__BORLANDC__)
+typedef unsigned __int64 IUINT64;
+#else
+typedef unsigned long long IUINT64;
+#endif
+#endif
+
 
 //=====================================================================
 // DETECTION WORD ORDER
@@ -633,12 +651,23 @@ public:
 	// BicubicSampler, (x, y) is float point position
 	IUINT32 SampleBicubic(float x, float y, bool repeat = true) const;
 
-	// method=0:nearest, 1:bilinear, 2:bicubic
-	void Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
-		int sx, int sy, int sw, int sh, int method, bool repeat = true);
+
+	// resample 
+	enum ResampleFilter {
+		NEAREST = 0,	// no interpolate at all
+		LINEAR = 1,		// interpolate between rows not columns.
+		BILINEAR = 2,	// interpolate between rows and columns
+		BOX = 3,		// better than bilinear, similar to bicubic, but much faster
+		BICUBIC = 4,	// unoptimized, slow, but high quality, TODO: optimize it
+	};
+
+	// resample using different filter, 
+	int Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
+		int sx, int sy, int sw, int sh, ResampleFilter filter);
 
 	// return an new resampled bitmap
-	BasicBitmap *Resample(int NewWidth, int NewHeight, int method, bool repeat = true) const;
+	BasicBitmap *Resample(int NewWidth, int NewHeight, ResampleFilter filter) const;
+
 
 public:
 
@@ -704,6 +733,9 @@ public:
 
 	// SetBlock only works with 8 bpp
 	int SetBlock(int x, int y, const int *block, int w, int h);
+
+	// Set new alpha to all pixel, works for 32bits
+	void SetAlphaForAllPixel(int alpha);
 
 
 public:

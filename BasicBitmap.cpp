@@ -4776,8 +4776,8 @@ void BasicBitmap::QuickText(int x, int y, const char *text, IUINT32 color)
 	7916572,808498428,7876656,3435973836ul,16567500,3435973836ul,3176652,
 	3603351238ul,13037310,946652870,13003832,2026687692,7876656,411879166,
 	16672306,1616928888,7888992,405823680,132620,404232312,7870488,3328981008ul,0,
-	0,4278190080ul,
-	};
+	0,4278190080ul };
+
 	const unsigned char *ascii = (const unsigned char*)font;
 	int savex = x;
 	for (; text[0]; text++) {
@@ -4999,6 +4999,18 @@ int BasicBitmap::SetBlock(int x, int y, const int *block, int w, int h)
 
 
 //---------------------------------------------------------------------
+// SetAlphaForAllPixel
+//---------------------------------------------------------------------
+void BasicBitmap::SetAlphaForAllPixel(int alpha)
+{
+	if (_bpp != 32) return;
+	for (int i = 0; i < _h; i++) {
+		CardSetAlpha(Address32(0, i), _w, alpha);
+	}
+}
+
+
+//---------------------------------------------------------------------
 // BilinearSampler
 //---------------------------------------------------------------------
 static inline IUINT32 _pixel_biline_interp (IUINT32 tl, IUINT32 tr,
@@ -5167,50 +5179,524 @@ IUINT32 BasicBitmap::SampleBicubic(float x, float y, bool repeat) const
 
 
 //---------------------------------------------------------------------
-// Resample
-//---------------------------------------------------------------------
-void BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
-	int sx, int sy, int sw, int sh, int method, bool repeat)
-{
-	if (sw == dw && sh == dh) {
-		Convert(dx, dy, src, sx, sy, sw, sh, 0);
-		return;
-	}
-	float incx = ((float)sw) / ((float)dw);
-	float incy = ((float)sh) / ((float)dh);
-	for (int j = 0; j < dh; j++) {
-		float y = (float)sy + j * incy + 0.5f;
-		float x = (float)sx + 0.5f;
-		for (int i = 0; i < dw; i++) {
-			IUINT32 color = 0;
-			switch (method) {
-			case 0:
-				color = src->GetColor((int)x, (int)y);
-				break;
-			case 1:
-				color = src->SampleBilinear(x, y, repeat);
-				break;
-			case 2:
-				color = src->SampleBicubic(x, y, repeat);
-				break;
-			}
-			SetColor(dx + i, dy + j, color);
-			x += incx;
-		}
-	}
-}
-
-
-//---------------------------------------------------------------------
 // return an new resampled bitmap
 //---------------------------------------------------------------------
-BasicBitmap *BasicBitmap::Resample(int NewWidth, int NewHeight, int method, bool repeat) const
+BasicBitmap *BasicBitmap::Resample(int NewWidth, int NewHeight, ResampleFilter filter) const
 {
 	if (NewWidth <= 0 || NewHeight <= 0) return NULL;
 	BasicBitmap *bmp = new BasicBitmap(NewWidth, NewHeight, _fmt);
 	if (bmp == NULL) return NULL;
-	bmp->Resample(0, 0, NewWidth, NewHeight, this, 0, 0, _w, _h, method, repeat);
+	bmp->Resample(0, 0, NewWidth, NewHeight, this, 0, 0, _w, _h, filter);
 	return bmp;
 }
+
+
+
+//---------------------------------------------------------------------
+// Smooth Resample
+//---------------------------------------------------------------------
+
+// shrink x type
+typedef int (*BasicBitmap_ResampleShrinkX)(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth, void *workmem);
+
+// shrink y type
+typedef int (*BasicBitmap_ResampleShrinkY)(IUINT8 *dstpix, const IUINT8 *srcpix,
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight, void *workmem);
+
+// expand x type
+typedef int (*BasicBitmap_ResampleExpandX)(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth, void *workmem);
+
+// expand y type
+typedef int (*BasicBitmap_ResampleExpandY)(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight, void *workmem);
+
+
+// c implementation
+static int BasicBitmap_ResampleShrinkX_C(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth, void *workmem)
+{
+	IINT32 srcdiff = srcpitch - (srcwidth * 4);
+	IINT32 dstdiff = dstpitch - (dstwidth * 4);
+	IINT32 x, y;
+	IINT32 xspace = 0x10000 * srcwidth / dstwidth;
+	IINT32 xrecip = 0;
+	IINT64 zrecip = 1;
+
+	zrecip <<= 32;
+	xrecip = (int)(zrecip / xspace);
+
+	for (y = 0; y < height; y++) {
+		IUINT32 accumulate[4] = { 0, 0, 0, 0 };
+		int xcounter = xspace;
+		for (x = 0; x < srcwidth; x++) {
+			if (xcounter > 0x10000) {
+				accumulate[0] += (IUINT32) *srcpix++;
+				accumulate[1] += (IUINT32) *srcpix++;
+				accumulate[2] += (IUINT32) *srcpix++;
+				accumulate[3] += (IUINT32) *srcpix++;
+				xcounter -= 0x10000;
+			}	else {
+				int xfrac = 0x10000 - xcounter;
+				#define ismooth_putpix_x(n) { \
+						*dstpix++ = (IUINT8)(((accumulate[n] + ((srcpix[n] \
+							* xcounter) >> 16)) * xrecip) >> 16); \
+					}
+				ismooth_putpix_x(0);
+				ismooth_putpix_x(1);
+				ismooth_putpix_x(2);
+				ismooth_putpix_x(3);
+				#undef ismooth_putpix_x
+				accumulate[0] = (IUINT32)((*srcpix++ * xfrac) >> 16);
+				accumulate[1] = (IUINT32)((*srcpix++ * xfrac) >> 16);
+				accumulate[2] = (IUINT32)((*srcpix++ * xfrac) >> 16);
+				accumulate[3] = (IUINT32)((*srcpix++ * xfrac) >> 16);
+				xcounter = xspace - xfrac;
+			}
+		}
+		srcpix += srcdiff;
+		dstpix += dstdiff;
+	}
+	return 0;
+}
+
+
+// c implementation
+static int BasicBitmap_ResampleShrinkY_C(IUINT8 *dstpix, const IUINT8 *srcpix,
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight,
+	void *workmem)
+{
+	IINT32 srcdiff = srcpitch - (width * 4);
+	IINT32 dstdiff = dstpitch - (width * 4);
+	IINT32 x, y;
+	IINT32 yspace = 0x10000 * srcheight / dstheight;
+	IINT32 yrecip = 0;
+	IINT32 ycounter = yspace;
+	IUINT32 *templine;
+
+	IINT64 zrecip = 1;
+	zrecip <<= 32;
+	yrecip = (IINT32)(zrecip / yspace);
+
+	// size = width * 4 * 4
+	templine = (IUINT32*)workmem;
+	if (templine == NULL) return -1;
+
+	memset(templine, 0, width * 4 * 4);
+
+	for (y = 0; y < srcheight; y++) {
+		IUINT32 *accumulate = templine;
+		if (ycounter > 0x10000) {
+			for (x = 0; x < width; srcpix += 4, accumulate += 4, x++) {
+				accumulate[0] += (IUINT32)srcpix[0];
+				accumulate[1] += (IUINT32)srcpix[1];
+				accumulate[2] += (IUINT32)srcpix[2];
+				accumulate[3] += (IUINT32)srcpix[3];
+			}
+			ycounter -= 0x10000;
+		}	else {
+			IINT32 yfrac = 0x10000 - ycounter;
+			IINT32 yc = ycounter;
+			IINT32 yr = yrecip;
+			for (x = 0; x < width; dstpix += 4, srcpix += 4, accumulate += 4, x++) {
+				dstpix[0] = (IUINT8)(((accumulate[0] + ((srcpix[0] * yc) >> 16)) * yr) >> 16);
+				dstpix[1] = (IUINT8)(((accumulate[1] + ((srcpix[1] * yc) >> 16)) * yr) >> 16);
+				dstpix[2] = (IUINT8)(((accumulate[2] + ((srcpix[2] * yc) >> 16)) * yr) >> 16);
+				dstpix[3] = (IUINT8)(((accumulate[3] + ((srcpix[3] * yc) >> 16)) * yr) >> 16);
+			}
+			dstpix += dstdiff;
+			accumulate = templine;
+			srcpix -= 4 * width;
+			for (x = 0; x < width; accumulate += 4, srcpix += 4, x++) {
+				accumulate[0] = (IUINT32)((srcpix[0] * yfrac) >> 16);
+				accumulate[1] = (IUINT32)((srcpix[1] * yfrac) >> 16);
+				accumulate[2] = (IUINT32)((srcpix[2] * yfrac) >> 16);
+				accumulate[3] = (IUINT32)((srcpix[3] * yfrac) >> 16);
+			}
+			ycounter = yspace - yfrac;
+		}
+		srcpix += srcdiff;
+	}
+
+	return 0;
+}
+
+
+// c implementation
+static int BasicBitmap_ResampleExpandX_C(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth,
+	void *workmem)
+{
+	IINT32 dstdiff = dstpitch - (dstwidth * 4);
+	IINT32 *xidx0, *xmult0, *xmult1;
+	IINT32 x, y;
+
+	if (workmem == NULL) return -1;
+
+	xidx0 = (IINT32*)workmem;		// size = 3 * dstwidth * 4
+	xmult0 = xidx0 + dstwidth;
+	xmult1 = xidx0 + dstwidth * 2;
+
+	for (x = 0; x < dstwidth; x++) {
+		xidx0[x] = x * (srcwidth - 1) / dstwidth;
+		xmult1[x] = 0x10000 * ((x * (srcwidth - 1)) % dstwidth) / dstwidth;
+		xmult0[x] = 0x10000 - xmult1[x];
+	}
+
+	for (y = 0; y < height; y++) {
+		const IUINT8 *srcrow0 = srcpix + y * srcpitch;
+		for (x = 0; x < dstwidth; x++) {
+			const IUINT8 *src = srcrow0 + xidx0[x] * 4;
+			IINT32 xm0 = xmult0[x];
+			IINT32 xm1 = xmult1[x];
+			*dstpix++ = (IUINT8)(((src[0] * xm0) + (src[4] * xm1)) >> 16);
+			*dstpix++ = (IUINT8)(((src[1] * xm0) + (src[5] * xm1)) >> 16);
+			*dstpix++ = (IUINT8)(((src[2] * xm0) + (src[6] * xm1)) >> 16);
+			*dstpix++ = (IUINT8)(((src[3] * xm0) + (src[7] * xm1)) >> 16);
+		}
+		dstpix += dstdiff;
+	}
+
+	return 0;
+}
+
+
+// c implementation
+static int BasicBitmap_ResampleExpandY_C(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight,
+	void *workmem)
+{
+	IINT32 x, y;
+	for (y = 0; y < dstheight; y++) {
+		int yidx0 = y * (srcheight - 1) / dstheight;
+		const IUINT8 *s0 = srcpix + yidx0 * srcpitch;
+		const IUINT8 *s1 = s0 + srcpitch;
+		int ym1 = 0x10000 * ((y * (srcheight - 1)) % dstheight) / dstheight;
+		int ym0 = 0x10000 - ym1;
+		for (x = 0; x < width; x++) {
+			*dstpix++ = (IUINT8)(((*s0++ * ym0) + (*s1++ * ym1)) >> 16);
+			*dstpix++ = (IUINT8)(((*s0++ * ym0) + (*s1++ * ym1)) >> 16);
+			*dstpix++ = (IUINT8)(((*s0++ * ym0) + (*s1++ * ym1)) >> 16);
+			*dstpix++ = (IUINT8)(((*s0++ * ym0) + (*s1++ * ym1)) >> 16);
+		}
+		dstpix += dstpitch - 4 * width;
+	}
+
+	return 0;
+}
+
+
+//---------------------------------------------------------------------
+// resample drivers
+//---------------------------------------------------------------------
+static BasicBitmap_ResampleShrinkX BasicBitmap_ResampleShrinkX_Ptr = 
+	BasicBitmap_ResampleShrinkX_C;
+
+static BasicBitmap_ResampleShrinkY BasicBitmap_ResampleShrinkY_Ptr = 
+	BasicBitmap_ResampleShrinkY_C;
+
+static BasicBitmap_ResampleExpandX BasicBitmap_ResampleExpandX_Ptr = 
+	BasicBitmap_ResampleExpandX_C;
+
+static BasicBitmap_ResampleExpandY BasicBitmap_ResampleExpandY_Ptr = 
+	BasicBitmap_ResampleExpandY_C;
+
+
+//---------------------------------------------------------------------
+// resample driver setup
+//---------------------------------------------------------------------
+void BasicBitmap_ResampleDriver(int id, void *ptr)
+{
+	switch (id) {
+	case 0:
+		BasicBitmap_ResampleShrinkX_Ptr = (ptr == NULL)? 
+			BasicBitmap_ResampleShrinkX_C :
+			(BasicBitmap_ResampleShrinkX)ptr;
+		break;
+	case 1:
+		BasicBitmap_ResampleShrinkY_Ptr = (ptr == NULL)? 
+			BasicBitmap_ResampleShrinkY_C :
+			(BasicBitmap_ResampleShrinkY)ptr;
+		break;
+	case 3:
+		BasicBitmap_ResampleExpandX_Ptr = (ptr == NULL)? 
+			BasicBitmap_ResampleExpandX_C :
+			(BasicBitmap_ResampleExpandX)ptr;
+		break;
+	case 4:
+		BasicBitmap_ResampleExpandY_Ptr = (ptr == NULL)? 
+			BasicBitmap_ResampleExpandY_C :
+			(BasicBitmap_ResampleExpandY)ptr;
+		break;
+	}
+}
+
+
+//---------------------------------------------------------------------
+// ResampleSmooth
+//---------------------------------------------------------------------
+int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidth,
+	int srcwidth, int dstheight, int srcheight, long dstpitch, long srcpitch)
+{
+	if (srcwidth == dstwidth && srcheight == dstheight) {
+		long size = srcwidth * 4;
+		for (int y = 0; y < dstheight; y++) {
+			internal_memcpy(dstpix + y * dstpitch, srcpix + y * srcpitch, size);
+		}
+		return 0;
+	}
+
+	long needsrc = (srcwidth > srcheight)? srcwidth : srcheight;
+	long needdst = (dstwidth > dstheight)? dstwidth : dstheight;
+	long worksize = ((needsrc > needdst)? needsrc : needdst) * 16;
+	long imagesize = ((long)srcwidth) * dstheight * 4;
+
+	IUINT8 *temp = new IUINT8[imagesize + worksize];
+	if (temp == NULL) return -1;
+
+	IUINT8 *workmem = temp + imagesize;
+
+	if (dstwidth == srcwidth) {
+		if (dstheight < srcheight) {
+			if (BasicBitmap_ResampleShrinkY_Ptr(dstpix, srcpix, srcwidth, dstpitch, 
+				srcpitch, dstheight, srcheight, workmem) != 0) {
+				delete temp;
+				return -2;
+			}
+		}
+		else if (dstheight > srcheight) {
+			if (BasicBitmap_ResampleExpandY_Ptr(dstpix, srcpix, srcwidth, dstpitch,
+				srcpitch, dstheight, srcheight, workmem) != 0) {
+				delete temp;
+				return -3;
+			}
+		}
+		else {
+			assert(0);
+		}
+		delete temp;
+		return 0;
+	}
+
+	if (dstheight < srcheight) {
+		if (BasicBitmap_ResampleShrinkY_Ptr(temp, srcpix, srcwidth, srcwidth * 4, 
+			srcpitch, dstheight, srcheight, workmem) != 0) {
+			delete temp;
+			return -4;
+		}
+	}
+	else if (dstheight > srcheight) {
+		if (BasicBitmap_ResampleExpandY_Ptr(temp, srcpix, srcwidth, srcwidth * 4,
+			srcpitch, dstheight, srcheight, workmem) != 0) {
+			delete temp;
+			return -5;
+		}
+	}
+	else {
+		if (dstwidth < srcwidth) {
+			if (BasicBitmap_ResampleShrinkX_Ptr(dstpix, srcpix, dstheight, dstpitch, 
+				srcpitch, dstwidth, srcwidth, workmem) != 0) {
+				delete temp;
+				return -6;
+			}
+		}
+		else if (dstwidth > srcwidth) {
+			if (BasicBitmap_ResampleExpandX_Ptr(dstpix, srcpix, dstheight, dstpitch, 
+				srcpitch, dstwidth, srcwidth, workmem) != 0) {
+				delete temp;
+				return -7;
+			}
+		}
+		else {
+			assert(0);
+		}
+		delete temp;
+		return 0;	
+	}
+
+	if (dstwidth < srcwidth) {
+		if (BasicBitmap_ResampleShrinkX_Ptr(dstpix, temp, dstheight, dstpitch, 
+			srcwidth * 4, dstwidth, srcwidth, workmem) != 0) {
+			delete temp;
+			return -8;
+		}
+	}
+	else if (dstwidth > srcwidth) {
+		if (BasicBitmap_ResampleExpandX_Ptr(dstpix, temp, dstheight, dstpitch, 
+			srcwidth * 4, dstwidth, srcwidth, workmem) != 0) {
+			delete temp;
+			return -9;
+		}
+	}
+	else {
+		long size = srcwidth * 4;
+		for (int y = 0; y < dstheight; y++) {
+			internal_memcpy(dstpix + y * dstpitch, temp + y * size, size);
+		}
+	}
+
+	delete temp;
+
+	return 0;
+}
+
+
+//---------------------------------------------------------------------
+// ResampleSmooth
+//---------------------------------------------------------------------
+int BasicBitmap_ResampleBox(BasicBitmap *dst, int dx, int dy, int dw, int dh,
+	const BasicBitmap *src, int sx, int sy, int sw, int sh)
+{
+	BasicBitmap::PixelFmt sfmt = src->Format();
+	BasicBitmap::PixelFmt dfmt = dst->Format();
+	int srcwidth = sw;
+	int srcheight = sh;
+	int dstwidth = dw;
+	int dstheight = dh;
+	const IUINT8 *ss;
+	IUINT8 *dd;
+
+	if (src->Bpp() == 32 && dst->Bpp() == 32 && sfmt == dfmt) {
+		dd = (IUINT8*)dst->Address32(dx, dy);
+		ss = (const IUINT8*)src->Address32(sx, sy);
+		return BasicBitmap_ResampleSmooth(dd, ss, dstwidth, srcwidth, dstheight,
+			srcheight, dst->Pitch(), src->Pitch());
+	}
+
+	if (src->Bpp() == 32) {
+		BasicBitmap *bmp = new BasicBitmap(dstwidth, dstheight, BasicBitmap::A8R8G8B8);
+		if (bmp == NULL) return -1;
+		int hr = BasicBitmap_ResampleSmooth(bmp->Address8(0, 0), 
+					(const IUINT8*)src->Address32(sx, sy),
+					dstwidth, srcwidth, dstheight, srcheight, 
+					bmp->Pitch(), src->Pitch());
+		if (hr != 0) {
+			delete bmp;
+			return -2;
+		}
+		if (sfmt == BasicBitmap::X8R8G8B8) {
+			bmp->SetAlphaForAllPixel(255);
+		}
+		dst->Convert(dx, dy, bmp, 0, 0, bmp->Width(), bmp->Height());
+		delete bmp;
+		return 0;
+	}
+
+	if (dst->Bpp() == 32) {
+		BasicBitmap *bmp = new BasicBitmap(srcwidth, srcheight, BasicBitmap::A8R8G8B8);
+		if (bmp == NULL) return -3;
+		bmp->Convert(0, 0, src, 0, 0, srcwidth, srcheight);
+		int hr = BasicBitmap_ResampleSmooth((IUINT8*)dst->Address32(dx, dy),
+			(const IUINT8*)bmp->Address32(0, 0),
+			dstwidth, srcwidth, dstheight, srcheight,
+			dst->Pitch(), bmp->Pitch());
+		delete bmp;
+		if (hr != 0) {
+			return -4;
+		}
+		return 0;
+	}
+
+	BasicBitmap *bs = new BasicBitmap(sw, sh, BasicBitmap::A8R8G8B8);
+	BasicBitmap *bd = new BasicBitmap(dw, dh, BasicBitmap::A8R8G8B8);
+
+	if (bs == NULL || bd == NULL) {
+		if (bs) delete bs;
+		if (bd) delete bd;
+		return -5;
+	}
+
+	bs->Convert(0, 0, src, 0, 0, srcwidth, srcheight);
+
+	int hr = BasicBitmap_ResampleSmooth(bs->Address8(0, 0), bd->Address8(0, 0),
+		dstwidth, srcwidth, dstheight, srcheight, bd->Pitch(), bs->Pitch());
+
+	if (hr == 0) {
+		dst->Convert(dx, dy, bd, 0, 0, dstwidth, dstheight);
+	}
+
+	delete bs;
+	delete bd;
+
+	return (hr == 0)? 0 : -6;
+}
+
+
+//---------------------------------------------------------------------
+// Resample
+//---------------------------------------------------------------------
+int BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src, 
+	int sx, int sy, int sw, int sh, ResampleFilter filter)
+{
+	if ((_w | _h | src->_w | src->_h) >= 0x7fff) 
+		return -1;
+
+	if (dw == sw && dh == sh) {
+		Convert(dx, dy, src, sx, sy, sw, sh, 0);
+		return 0;
+	}
+	else {
+		BasicRect clipdst(0, 0, Width(), Height());
+		BasicRect clipsrc(0, 0, src->Width(), src->Height());
+		BasicRect bound_dst(dx, dy, dx + dw, dy + dh);
+		BasicRect bound_src(sx, sy, sx + sw, sy + sh);
+		if (ClipScale(&clipdst, &clipsrc, &bound_dst, &bound_src, 0) != 0) {
+			return 0;
+		}
+		dx = bound_dst.left;
+		dy = bound_dst.top;
+		dw = bound_dst.right - bound_dst.left;
+		dh = bound_dst.bottom - bound_dst.top;
+		sx = bound_src.left;
+		sy = bound_src.top;
+		sw = bound_src.right - bound_src.left;
+		sh = bound_src.bottom - bound_src.top;
+	}	
+
+	if (dx < 0 || dx + dw > (int)_w || dy < 0 || dy + dh > (int)_h ||
+		sx < 0 || sx + sw > (int)src->_w || sy < 0 || sy + sh > (int)src->_h ||
+		dh < 0 || dw < 0)
+		return 0;
+
+	if (sw == dw && sh == dh) {
+		Convert(dx, dy, src, sx, sy, sw, sh, 0);
+		return 0;
+	}
+
+	int mode = PIXEL_FLAG_SRCCOPY | PIXEL_FLAG_NOCLIP;
+
+	switch (filter) {
+	case NEAREST:
+		Scale(dx, dy, dw, dh, src, sx, sy, sw, sh, mode, 0xffffffff);
+		break;
+	case LINEAR:
+		Scale(dx, dy, dw, dh, src, sx, sy, sw, sh, mode | PIXEL_FLAG_LINEAR, 0xffffffff);
+		break;
+	case BILINEAR:
+		Scale(dx, dy, dw, dh, src, sx, sy, sw, sh, mode | PIXEL_FLAG_BILINEAR, 0xffffffff);
+		break;
+	case BOX: 
+		BasicBitmap_ResampleBox(this, dx, dy, dw, dh, src, sx, sy, sw, sh);
+		break;
+	case BICUBIC: {
+			float incx = ((float)sw) / ((float)dw);
+			float incy = ((float)sh) / ((float)dh);
+			for (int j = 0; j < dh; j++) {
+				float y = (float)sy + j * incy + 0.5f;
+				float x = (float)sx + 0.5f;
+				for (int i = 0; i < dw; i++) {
+					IUINT32 color = 0;
+					color = src->SampleBicubic(x, y, true);
+					SetColor(dx + i, dy + j, color);
+					x += incx;
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
 
 
