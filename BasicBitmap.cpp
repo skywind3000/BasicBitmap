@@ -5656,7 +5656,7 @@ int BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src
 
 	if (dx < 0 || dx + dw > (int)_w || dy < 0 || dy + dh > (int)_h ||
 		sx < 0 || sx + sw > (int)src->_w || sy < 0 || sy + sh > (int)src->_h ||
-		dh < 0 || dw < 0)
+		dh <= 0 || dw <= 0)
 		return 0;
 
 	if (sw == dw && sh == dh) {
