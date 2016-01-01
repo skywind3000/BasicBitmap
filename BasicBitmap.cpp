@@ -5449,7 +5449,7 @@ int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidt
 
 	long needsrc = (srcwidth > srcheight)? srcwidth : srcheight;
 	long needdst = (dstwidth > dstheight)? dstwidth : dstheight;
-	long worksize = ((needsrc > needdst)? needsrc : needdst) * 16;
+	long worksize = ((needsrc > needdst)? needsrc : needdst) * 32;
 	long imagesize = ((long)srcwidth) * dstheight * 4;
 
 	IUINT8 *temp = new IUINT8[imagesize + worksize];
