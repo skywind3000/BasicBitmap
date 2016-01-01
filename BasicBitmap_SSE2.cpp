@@ -599,7 +599,7 @@ static inline void *memcpy_tiny(void *dst, const void *src, size_t size) {
 		break;
 	}
 
-	return dd;
+	return dst;
 }
 
 
@@ -709,7 +709,9 @@ static void* memcpy_fast(void *destination, const void *source, size_t size)
 		_mm_sfence();
 	}
 
-	return memcpy_tiny(dst, src, size);
+	memcpy_tiny(dst, src, size);
+
+	return destination;
 }
 
 
@@ -1274,6 +1276,268 @@ static int TransparentBlit_Avx_32(void *dst, long dpitch, int dx, const void *sr
 #endif
 
 
+
+//---------------------------------------------------------------------
+// Resample
+//---------------------------------------------------------------------
+static int Resample_ShrinkX_SSE2(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth, void *workmem)
+{
+    IINT32 srcdiff = srcpitch - (srcwidth * 4);
+    IINT32 dstdiff = dstpitch - (dstwidth * 4);
+
+    IINT32 xspace = 0x04000 * srcwidth / dstwidth; /* must be > 1 */
+    IINT32 xrecip = 0x40000000 / xspace;
+
+	__m128i zero = _mm_setzero_si128();			// pxor mm0, mm0
+	__m128i one = _mm_set1_epi32(0x40004000);	// mm6 = one64
+	__m128i xmm7 = _mm_cvtsi32_si128(xrecip);	// mm7 = xrecip
+	xmm7 = _mm_shufflelo_epi16(xmm7, 0);			
+	for (int y = 0; y < height; y++) {
+		IINT32 counter = xspace;				// ecx = counter
+		__m128i accumulator = _mm_setzero_si128();	// accumulator(mm1)=0
+		__m128i xmm2, xmm3, xmm4;
+		for (int x = srcwidth; x > 0; x--) {
+			if (counter > 0x4000) {
+				xmm2 = _mm_cvtsi32_si128(*(IUINT32*)srcpix);
+				srcpix += 4;
+				xmm2 = _mm_unpacklo_epi8(xmm2, zero);		// punpcklbw mm2, mm0
+				accumulator = _mm_add_epi16(accumulator, xmm2);	// paddw mm1, mm2
+				counter -= 0x4000;				// sub ecx, 0x4000
+			}
+			else {
+				xmm2 = _mm_cvtsi32_si128(counter);	// mm2 = ecx
+				xmm2 = _mm_shufflelo_epi16(xmm2, 0);		// pshufw mm2, mm2, 0
+				xmm4 = _mm_cvtsi32_si128(*(IUINT32*)srcpix);	// movd mm4, [srcpix]
+				srcpix += 4;
+				xmm4 = _mm_unpacklo_epi8(xmm4, zero);	// punpcklbw mm4, mm0
+				xmm3 = _mm_sub_epi16(one, xmm2);		
+				xmm4 = _mm_slli_epi16(xmm4, 2);
+				xmm2 = _mm_mulhi_epu16(xmm2, xmm4);
+				xmm3 = _mm_mulhi_epu16(xmm3, xmm4);
+				xmm2 = _mm_add_epi16(xmm2, accumulator);
+				accumulator = xmm3;
+				xmm2 = _mm_mulhi_epu16(xmm2, xmm7);
+				xmm2 = _mm_packus_epi16(xmm2, zero);
+				*((IINT32*)dstpix) = _mm_cvtsi128_si32(xmm2);
+				counter += xspace;
+				dstpix += 4;
+				counter -= 0x4000;
+			}
+		}
+		srcpix += srcdiff;
+		dstpix += dstdiff;
+	}
+
+	return 0;
+}
+
+
+static int Resample_ShrinkY_SSE2(IUINT8 *dstpix, const IUINT8 *srcpix,
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight,
+	void *workmem)
+{
+    IUINT16 *templine;
+    IINT32 srcdiff = srcpitch - (width * 4);
+    IINT32 dstdiff = dstpitch - (width * 4);
+    IINT32 yspace = 0x4000 * srcheight / dstheight; /* must be > 1 */
+    IINT32 yrecip = 0x40000000 / yspace;
+
+    templine = (IUINT16*)workmem;
+    memset(templine, 0, width * 8);
+
+	__m128i one = _mm_set1_epi32(0x40004000);	// mm0
+	__m128i zero = _mm_setzero_si128();			// mm0=0
+	IINT32 counter = yspace;
+	__m128i xmm7 = _mm_cvtsi32_si128(yrecip);	// mm7=yrecip
+	xmm7 = _mm_shufflelo_epi16(xmm7, 0);
+	xmm7 = _mm_or_si128(_mm_slli_si128(xmm7, 8), xmm7);
+	int x, y;
+
+	for (y = srcheight; y > 0; y--) {
+		IUINT16 *accumulate = templine;	// eax = accumulate
+		if (counter > 0x4000) {
+			__m128i xmm1, xmm2;
+			for (x = width; x >= 2; x -= 2) {
+				xmm1 = _mm_loadl_epi64((__m128i*)srcpix);
+				srcpix += 8;
+				xmm2 = _mm_loadu_si128((__m128i*)accumulate);
+				xmm1 = _mm_unpacklo_epi8(xmm1, zero);
+				xmm2 = _mm_add_epi16(xmm2, xmm1);
+				_mm_storeu_si128((__m128i*)accumulate, xmm2);
+				accumulate += 8;
+			}
+			for (; x > 0; x--) {
+				xmm1 = _mm_cvtsi32_si128(*(IUINT32*)srcpix);
+				srcpix += 4;
+				xmm2 = _mm_loadl_epi64((__m128i*)accumulate);
+				xmm1 = _mm_unpacklo_epi8(xmm1, zero);
+				xmm2 = _mm_add_epi16(xmm2, xmm1);
+				_mm_storel_epi64((__m128i*)accumulate, xmm2);
+				accumulate += 4;
+			}
+			counter -= 0x4000;
+		}
+		else {
+			__m128i xmm1 = _mm_cvtsi32_si128(counter);
+			xmm1 = _mm_shufflelo_epi16(xmm1, 0);
+			xmm1 = _mm_or_si128(_mm_slli_si128(xmm1, 8), xmm1);
+			__m128i xmm6 = _mm_sub_epi16(one, xmm1);
+			__m128i xmm3, xmm5, xmm4;
+			for (x = width; x >= 2; x -= 2) {
+				xmm4 = _mm_loadl_epi64((__m128i*)srcpix);
+				srcpix += 8;
+				xmm4 = _mm_unpacklo_epi8(xmm4, zero);
+				xmm5 = _mm_loadu_si128((__m128i*)accumulate);
+				xmm3 = xmm6;
+				xmm4 = _mm_slli_epi16(xmm4, 2);
+				xmm3 = _mm_mulhi_epu16(xmm3, xmm4);
+				xmm4 = _mm_mulhi_epu16(xmm4, xmm1);
+				_mm_storeu_si128((__m128i*)accumulate, xmm3);
+				xmm4 = _mm_add_epi16(xmm4, xmm5);
+				accumulate += 8;
+				xmm4 = _mm_mulhi_epu16(xmm4, xmm7);
+				xmm4 = _mm_packus_epi16(xmm4, zero);
+				_mm_storel_epi64((__m128i*)dstpix, xmm4);
+				dstpix += 8;
+			}
+			for (; x > 0; x--) {
+				xmm4 = _mm_cvtsi32_si128(*(IUINT32*)srcpix);
+				srcpix += 4;
+				xmm4 = _mm_unpacklo_epi8(xmm4, zero);
+				xmm5 = _mm_loadl_epi64((__m128i*)accumulate);
+				xmm3 = xmm6;
+				xmm4 = _mm_slli_epi16(xmm4, 2);
+				xmm3 = _mm_mulhi_epu16(xmm3, xmm4);
+				xmm4 = _mm_mulhi_epu16(xmm4, xmm1);
+				_mm_storel_epi64((__m128i*)accumulate, xmm3);
+				xmm4 = _mm_add_epi16(xmm4, xmm5);
+				accumulate += 4;
+				xmm4 = _mm_mulhi_epu16(xmm4, xmm7);
+				xmm4 = _mm_packus_epi16(xmm4, zero);
+				*((IINT32*)dstpix) = _mm_cvtsi128_si32(xmm4);
+				dstpix += 4;
+			}
+			dstpix += dstdiff;
+			counter += yspace - 0x4000;
+		}
+		srcpix += srcdiff;
+	}
+
+	return 0;
+}
+
+static int Resample_ExpandX_SSE2(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int height, long dstpitch, long srcpitch, int dstwidth, int srcwidth,
+	void *workmem)
+{
+    IINT32 *xidx0, *xmult0, *xmult1;
+    IINT32 x, y;
+
+	xidx0 = (IINT32*)workmem;
+	xmult0 = xidx0 + dstwidth;
+	xmult1 = xmult0 + dstwidth * 2;
+
+    for (x = 0; x < dstwidth; x++) {
+        IINT32 xm1 = 0x100 * ((x * (srcwidth - 1)) % dstwidth) / dstwidth;
+        IINT32 xm0 = 0x100 - xm1;
+        xidx0[x] = x * (srcwidth - 1) / dstwidth;
+        xmult1[x * 2]   = xm1 | (xm1 << 16);
+        xmult1[x * 2 + 1] = xm1 | (xm1 << 16);
+        xmult0[x * 2]   = xm0 | (xm0 << 16);
+        xmult0[x * 2 + 1] = xm0 | (xm0 << 16);
+    }
+
+    for (y = 0; y < height; y++) {
+        const IUINT8 *srcrow = srcpix + y * srcpitch;
+        IUINT8 *dstrow = dstpix + y * dstpitch;
+        IINT32 *xm0 = xmult0;
+        IINT32 *x0 = xidx0;
+		__m128i zero = _mm_setzero_si128();
+		__m128i one = _mm_set1_epi32(0x01000100);	// xmm7 = one
+		__m128i xmm1, xmm2, xmm4, xmm5;
+		for (x = dstwidth; x > 0; x--) {
+			IINT32 index = *x0++;
+			xmm2 = one;
+			xmm1 = _mm_loadl_epi64((__m128i*)xm0);
+			xm0 += 2;
+			xmm2 = _mm_sub_epi16(xmm2, xmm1);
+			xmm4 = _mm_cvtsi32_si128(*((IUINT32*)(srcrow + index * 4)));
+			xmm5 = _mm_cvtsi32_si128(*((IUINT32*)(srcrow + index * 4 + 4)));
+			xmm4 = _mm_unpacklo_epi8(xmm4, zero);
+			xmm5 = _mm_unpacklo_epi8(xmm5, zero);
+			xmm4 = _mm_mullo_epi16(xmm4, xmm1);
+			xmm5 = _mm_mullo_epi16(xmm5, xmm2);
+			xmm5 = _mm_add_epi16(xmm5, xmm4);
+			xmm5 = _mm_packus_epi16(_mm_srli_epi16(xmm5, 8), zero);
+			*((IUINT32*)dstrow) = _mm_cvtsi128_si32(xmm5);
+			dstrow += 4;
+		}
+    }
+
+	return 0;
+}
+
+static int Resample_ExpandY_SSE2(IUINT8 *dstpix, const IUINT8 *srcpix, 
+	int width, long dstpitch, long srcpitch, int dstheight, int srcheight,
+	void *workmem)
+{
+    IINT32 x, y;
+
+    for (y = 0; y < dstheight; y++) {
+        IINT32 yidx0 = y * (srcheight - 1) / dstheight;
+        const IUINT8 *srcrow0 = srcpix + yidx0 * srcpitch;
+        const IUINT8 *srcrow1 = srcrow0 + srcpitch;
+        IINT32 ymult1 = 0x0100 * ((y * (srcheight - 1)) % dstheight) / dstheight;
+        IINT32 ymult0 = 0x0100 - ymult1;
+        IUINT8 *dstrow = dstpix + y * dstpitch;
+
+		__m128i zero = _mm_setzero_si128();		// xmm0
+		__m128i xmm1 = _mm_cvtsi32_si128(ymult0);
+		__m128i xmm2 = _mm_cvtsi32_si128(ymult1);
+
+		xmm1 = _mm_shufflelo_epi16(xmm1, 0);
+		xmm2 = _mm_shufflelo_epi16(xmm2, 0);
+		xmm1 = _mm_or_si128(_mm_slli_si128(xmm1, 8), xmm1);
+		xmm2 = _mm_or_si128(_mm_slli_si128(xmm2, 8), xmm2);
+
+		__m128i xmm4, xmm5;
+
+		for (x = width; x >= 2; x -= 2) {
+			xmm4 = _mm_loadl_epi64((__m128i*)srcrow0);
+			xmm5 = _mm_loadl_epi64((__m128i*)srcrow1);
+			srcrow0 += 8;
+			srcrow1 += 8;
+			xmm4 = _mm_unpacklo_epi8(xmm4, zero);
+			xmm5 = _mm_unpacklo_epi8(xmm5, zero);
+			xmm4 = _mm_mullo_epi16(xmm4, xmm1);
+			xmm5 = _mm_mullo_epi16(xmm5, xmm2);
+			xmm5 = _mm_add_epi16(xmm5, xmm4);
+			xmm5 = _mm_packus_epi16(_mm_srli_epi16(xmm5, 8), zero);
+			_mm_storel_epi64((__m128i*)dstrow, xmm5);
+			dstrow += 8;
+		}
+
+		for (; x > 0; x--) {
+			xmm4 = _mm_cvtsi32_si128(*(IUINT32*)srcrow0);
+			xmm5 = _mm_cvtsi32_si128(*(IUINT32*)srcrow1);
+			srcrow0 += 4;
+			srcrow1 += 4;
+			xmm4 = _mm_unpacklo_epi8(xmm4, zero);
+			xmm5 = _mm_unpacklo_epi8(xmm5, zero);
+			xmm4 = _mm_mullo_epi16(xmm4, xmm1);
+			xmm5 = _mm_mullo_epi16(xmm5, xmm2);
+			xmm5 = _mm_add_epi16(xmm5, xmm4);
+			xmm5 = _mm_packus_epi16(_mm_srli_epi16(xmm5, 8), zero);
+			*(IUINT32*)dstrow = _mm_cvtsi128_si32(xmm5);
+			dstrow += 4;
+		}
+    }
+
+	return 0;
+}
+
+
 //---------------------------------------------------------------------
 // CPU Feature
 //---------------------------------------------------------------------
@@ -1352,8 +1616,8 @@ static int _x86_cpu_detect_feature(unsigned int *features)
 {
 	int eax = 0, ebx = 0, ecx = 0, edx = 0;
 	int level = 0;
-	features[0] = features[1] = 0;
-	features[2] = features[3] = 0;
+	features[0] = features[1] = features[2] = features[3] = 0;
+	features[4] = features[5] = features[6] = features[7] = 0;
 	if (_x86_cpuid(0, &eax, &ebx, &ecx, &edx) != 0) return -1;
 	level = eax;
 #if (!defined(__x86_64__)) && (!defined(__amd64__)) && (!defined(_M_X64))
@@ -1383,7 +1647,7 @@ static int _x86_cpu_detect_feature(unsigned int *features)
 // detect bits
 unsigned int _x86_cpu_feature(int nbit)
 {
-	static unsigned int features[4];
+	static unsigned int features[8];
 	static int inited = 0;
 	if (inited == 0) {
 		_x86_cpu_detect_feature(features);
@@ -1397,6 +1661,7 @@ unsigned int _x86_cpu_feature(int nbit)
 // external interfaces
 //---------------------------------------------------------------------
 extern void *(*_internal_hook_memcpy)(void *dst, const void *src, size_t n);
+extern void BasicBitmap_ResampleDriver(int id, void *ptr);
 
 
 //---------------------------------------------------------------------
@@ -1424,6 +1689,11 @@ int BasicBitmap_SSE2_AVX_Enable()
 		BasicBitmap::SetDriver(BasicBitmap::X8R8G8B8, PixelDraw_SSE2_SRCOVER_A8R8G8B8, 1);
 
 		BasicBitmap::SetDriver(InterpRow_SSE);
+
+		BasicBitmap_ResampleDriver(0, (void*)Resample_ShrinkX_SSE2);
+		BasicBitmap_ResampleDriver(1, (void*)Resample_ShrinkY_SSE2);
+		BasicBitmap_ResampleDriver(3, (void*)Resample_ExpandX_SSE2);
+		BasicBitmap_ResampleDriver(4, (void*)Resample_ExpandY_SSE2);
 
 		result |= 1;
 	}
