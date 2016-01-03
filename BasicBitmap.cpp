@@ -5545,7 +5545,7 @@ int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidt
 //---------------------------------------------------------------------
 // ResampleSmooth
 //---------------------------------------------------------------------
-int BasicBitmap_ResampleBox(BasicBitmap *dst, int dx, int dy, int dw, int dh,
+int BasicBitmap_ResampleAvg(BasicBitmap *dst, int dx, int dy, int dw, int dh,
 	const BasicBitmap *src, int sx, int sy, int sw, int sh)
 {
 	BasicBitmap::PixelFmt sfmt = src->Format();
@@ -5667,7 +5667,7 @@ int BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src
 	int mode = PIXEL_FLAG_SRCCOPY | PIXEL_FLAG_NOCLIP;
 
 	switch (filter) {
-	case NEAREST:
+	case NONE:
 		Scale(dx, dy, dw, dh, src, sx, sy, sw, sh, mode, 0xffffffff);
 		break;
 	case LINEAR:
@@ -5676,8 +5676,8 @@ int BasicBitmap::Resample(int dx, int dy, int dw, int dh, const BasicBitmap *src
 	case BILINEAR:
 		Scale(dx, dy, dw, dh, src, sx, sy, sw, sh, mode | PIXEL_FLAG_BILINEAR, 0xffffffff);
 		break;
-	case BOX: 
-		BasicBitmap_ResampleBox(this, dx, dy, dw, dh, src, sx, sy, sw, sh);
+	case AVERAGE: 
+		BasicBitmap_ResampleAvg(this, dx, dy, dw, dh, src, sx, sy, sw, sh);
 		break;
 	case BICUBIC: {
 			float incx = ((float)sw) / ((float)dw);

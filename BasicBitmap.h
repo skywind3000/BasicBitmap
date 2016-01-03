@@ -654,10 +654,10 @@ public:
 
 	// resample 
 	enum ResampleFilter {
-		NEAREST = 0,	// no interpolate at all
+		NONE = 0,		// no interpolate at all
 		LINEAR = 1,		// interpolate between rows not columns.
 		BILINEAR = 2,	// interpolate between rows and columns
-		BOX = 3,		// better than bilinear, similar to bicubic, but much faster
+		AVERAGE = 3,	// better than bilinear, similar to bicubic, but much faster
 		BICUBIC = 4,	// unoptimized, slow, but high quality, TODO: optimize it
 	};
 
