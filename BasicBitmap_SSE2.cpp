@@ -718,15 +718,75 @@ static void* memcpy_fast(void *destination, const void *source, size_t size)
 //---------------------------------------------------------------------
 // fast blit using sse2
 //---------------------------------------------------------------------
+static void NormalBlit_0(void *dst, long dstpitch, 
+	const void *src, long srcpitch, int width, int height) {
+	if (dstpitch == srcpitch && (long)width == srcpitch) {
+		memcpy_fast(dst, src, (size_t)width * height);
+		return;
+	}
+	if (width <= 128) {
+		for (; height > 0; height--) {
+			memcpy_tiny(dst, src, width);
+			dst = (char*)dst + dstpitch;
+			src = (const char*)src + srcpitch;
+		}
+	}
+#if 1
+	else if (width <= 1600) {
+		if ((width & 31) == 0) {
+			int count = width >> 5;
+			for (; height > 0; height--) {
+				unsigned char *dd = (unsigned char*)dst;
+				const unsigned char *ss = (const unsigned char*)src;
+				for (int x = count; x > 0; x--) {
+					__m128i c1 = _mm_loadu_si128((const __m128i*)ss);
+					__m128i c2 = _mm_loadu_si128((const __m128i*)ss + 1);
+					ss += 32;
+					_mm_storeu_si128((__m128i*)dd, c1);
+					_mm_storeu_si128((__m128i*)dd + 1, c2);
+					dd += 32;
+				}
+				dst = (char*)dst + dstpitch;
+				src = (const char*)src + srcpitch;
+			}
+		}	else {
+			for (; height > 0; height--) {
+				unsigned char *dd = (unsigned char*)dst;
+				const unsigned char *ss = (const unsigned char*)src;
+				int x = width;
+				for (; x >= 32; x -= 32) {
+					__m128i c1 = _mm_loadu_si128((const __m128i*)ss);
+					__m128i c2 = _mm_loadu_si128((const __m128i*)ss + 1);
+					ss += 32;
+					_mm_storeu_si128((__m128i*)dd, c1);
+					_mm_storeu_si128((__m128i*)dd + 1, c2);
+					dd += 32;
+				}
+				memcpy_tiny(dd, ss, x);
+				dst = (char*)dst + dstpitch;
+				src = (const char*)src + srcpitch;
+			}
+		}
+	}
+#endif
+	else {
+		for (; height > 0; height--) {
+			memcpy_fast(dst, src, width);
+			dst = (char*)dst + dstpitch;
+			src = (const char*)src + srcpitch;
+		}
+	}
+}
+
+
+//---------------------------------------------------------------------
+// fast blit using sse2
+//---------------------------------------------------------------------
 static int NormalBlit_8(void *dst, long dpitch, int dx, const void *src,
 	long spitch, int sx, int w, int h, IUINT32 transparent, int flip)
 {
 	if (flip != 0) return -1;
-	for (; h > 0; h--) {
-		memcpy_fast((char*)dst + dx, (const char*)src + sx, w);
-		dst = (char*)dst + dpitch;
-		src = (const char*)src + spitch;
-	}
+	NormalBlit_0((char*)dst + dx, dpitch, (const char*)src + sx, spitch, w, h);
 	return 0;
 }
 
@@ -737,11 +797,7 @@ static int NormalBlit_16(void *dst, long dpitch, int dx, const void *src,
 	long spitch, int sx, int w, int h, IUINT32 transparent, int flip)
 {
 	if (flip != 0) return -1;
-	for (; h > 0; h--) {
-		memcpy_fast((short*)dst + dx, (const short*)src + sx, w * 2);
-		dst = (char*)dst + dpitch;
-		src = (const char*)src + spitch;
-	}
+	NormalBlit_0((short*)dst + dx, dpitch, (const short*)src + sx, spitch, w * 2, h);
 	return 0;
 }
 
@@ -752,11 +808,7 @@ static int NormalBlit_24(void *dst, long dpitch, int dx, const void *src,
 	long spitch, int sx, int w, int h, IUINT32 transparent, int flip)
 {
 	if (flip != 0) return -1;
-	for (; h > 0; h--) {
-		memcpy_fast((char*)dst + dx * 3, (const char*)src + sx * 3, w * 3);
-		dst = (char*)dst + dpitch;
-		src = (const char*)src + spitch;
-	}
+	NormalBlit_0((char*)dst + dx * 3, dpitch, (const char*)src + sx * 3, spitch, w * 3, h);
 	return 0;
 }
 
@@ -767,11 +819,7 @@ static int NormalBlit_32(void *dst, long dpitch, int dx, const void *src,
 	long spitch, int sx, int w, int h, IUINT32 transparent, int flip)
 {
 	if (flip != 0) return -1;
-	for (; h > 0; h--) {
-		memcpy_fast((IUINT32*)dst + dx, (const IUINT32*)src + sx, w * 4);
-		dst = (char*)dst + dpitch;
-		src = (const char*)src + spitch;
-	}
+	NormalBlit_0((IUINT32*)dst + dx, dpitch, (const IUINT32*)src + sx, spitch, w * 4, h);
 	return 0;
 }
 
