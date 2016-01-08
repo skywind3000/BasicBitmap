@@ -587,6 +587,9 @@ public:
 	// to raw pixel format then set to position
 	void SetColor(int x, int y, IUINT32 RGBA);
 
+	// Shuffle 32 bits
+	void Shuffle(int b0, int b1, int b2, int b3);
+
 public:
 	inline int Width() const { return _w; }
 	inline int Height() const { return _h; }
