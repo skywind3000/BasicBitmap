@@ -279,6 +279,7 @@ void PixelInitLut()
         _pixel_disasm_X888(c, r, g, b); (a) = 255; } while (0)
 #define RGBA_FROM_P8R8G8B8(c, r, g, b, a) do { \
         _pixel_from_P8R8G8B8(c, r, g, b, a); } while (0)
+#define RGBA_FROM_A8B8G8R8(c, r, g, b, a) _pixel_disasm_8888(c, a, b, g, r)
 #define RGBA_FROM_R8G8B8(c, r, g, b, a) do { \
         _pixel_disasm_888(c, r, g, b); (a) = 255; } while (0)
 #define RGBA_FROM_R5G6B5(c, r, g, b, a) do { \
@@ -291,6 +292,7 @@ void PixelInitLut()
 		(r) = (g) = (b) = (c); (a) = 255; } while (0)
 
 #define RGBA_TO_A8R8G8B8(r, g, b, a)  _pixel_asm_8888(a, r, g, b)
+#define RGBA_TO_A8B8G8R8(r, g, b, a)  _pixel_asm_8888(a, b, g, r)
 #define RGBA_TO_X8R8G8B8(r, g, b, a)  _pixel_asm_8888(0, r, g, b)
 #define RGBA_TO_P8R8G8B8(r, g, b, a)  _pixel_RGBA_to_P8R8G8B8(r, g, b, a)
 #define RGBA_TO_R8G8B8(r, g, b, a)    _pixel_asm_888(r, g, b)
@@ -531,6 +533,7 @@ int BasicBitmap::Initialize(int width, int height, PixelFmt fmt, void *mem, long
 
 	switch (fmt) {
 	case A8R8G8B8: bpp = 32; break;
+	case A8B8G8R8: bpp = 32; break;
 	case X8R8G8B8: bpp = 32; break;
 	case R8G8B8: bpp = 24; break;
 	case R5G6B5: bpp = 16; break;
@@ -1356,6 +1359,10 @@ IUINT32 BasicBitmap::GetColor(int x, int y) const
 	case X8R8G8B8:
 		cc = _pixel_fetch(32, bits, x) | 0xff000000;
 		break;
+	case A8B8G8R8:
+		cc = _pixel_fetch(32, bits, x);
+		cc = (cc & 0xff00ff00) | ((cc & 0xff) << 16) | ((cc & 0xff0000) >> 16);
+		break;
 	case UNKNOW:
 	case A8R8G8B8:
 		cc = _pixel_fetch(32, bits, x);
@@ -1407,6 +1414,11 @@ void BasicBitmap::SetColor(int x, int y, IUINT32 RGBA)
 		break;
 	case X8R8G8B8:
 		_pixel_store(32, bits, x, (RGBA & 0xffffff)); 
+		break;
+	case A8B8G8R8:
+		RGBA = (RGBA & 0xff00ff00) | ((RGBA & 0xff) << 16) | ((RGBA & 0xff0000) >> 16);
+		_pixel_store(32, bits, x, RGBA);
+		break;
 	case A8R8G8B8:
 		_pixel_store(32, bits, x, RGBA);
 		break;
@@ -1491,6 +1503,8 @@ IUINT32 BasicBitmap::Raw2ARGB(IUINT32 color)
 	case R8G8B8:
 	case X8R8G8B8:
 		return 0xff000000 | color;
+	case A8B8G8R8:
+		return (color & 0xff00ff00) | ((color & 0xff) << 16) | ((color & 0xff0000) >> 16);
 	case UNKNOW:
 	case A8R8G8B8:
 		return color;
@@ -1527,6 +1541,8 @@ IUINT32 BasicBitmap::ARGB2Raw(IUINT32 argb)
 		return argb & 0xffffff;
 	case X8R8G8B8:
 		return argb & 0xffffff;
+	case A8B8G8R8:
+		return _pixel_asm_8888(a, b, g, r);
 	case A8R8G8B8:
 		return argb;
 	case UNKNOW:
@@ -1611,6 +1627,25 @@ void BasicBitmap::Fetch(PixelFmt fmt, const void *bits, int x, int w, IUINT32 *b
 			internal_memcpy(buffer, (const IUINT32*)bits + x, w * sizeof(IUINT32));
 		}
 		break;
+	case A8B8G8R8: {
+			const IUINT32 *pixel = (const IUINT32*)bits + x;
+			ILINS_LOOP_DOUBLE( 
+				{
+					*buffer++ = ((*pixel & 0xff00ff00) |
+						((*pixel & 0xff0000) >> 16) | ((*pixel & 0xff) << 16));
+					pixel++;
+				},
+				{
+					*buffer++ = ((*pixel & 0xff00ff00) |
+						((*pixel & 0xff0000) >> 16) | ((*pixel & 0xff) << 16));
+					pixel++;
+					*buffer++ = ((*pixel & 0xff00ff00) |
+						((*pixel & 0xff0000) >> 16) | ((*pixel & 0xff) << 16));
+					pixel++;
+				},
+				w);
+		}
+		break;
 	case X8R8G8B8: {
 			const IUINT32 *src = (const IUINT32*)bits + x;
 			ILINS_LOOP_DOUBLE( 
@@ -1623,6 +1658,7 @@ void BasicBitmap::Fetch(PixelFmt fmt, const void *bits, int x, int w, IUINT32 *b
 				},
 				w);
 		}
+		break;
 	case UNKNOW:
 		break;
 	}
@@ -1706,6 +1742,25 @@ void BasicBitmap::Store(PixelFmt fmt, void *bits, int x, int w, const IUINT32 *b
 			internal_memcpy(dst, buffer, sizeof(IUINT32) * w);
 		}
 		break;
+	case A8B8G8R8: {
+			IUINT32 *dst = (IUINT32*)bits + x;
+			ILINS_LOOP_DOUBLE( 
+				{
+					*dst++ = (buffer[0] & 0xff00ff00) |
+						((buffer[0] & 0xff0000) >> 16) | ((buffer[0] & 0xff) << 16);
+					buffer++;
+				},
+				{
+					*dst++ = (buffer[0] & 0xff00ff00) |
+						((buffer[0] & 0xff0000) >> 16) | ((buffer[0] & 0xff) << 16);
+					buffer++;
+					*dst++ = (buffer[0] & 0xff00ff00) |
+						((buffer[0] & 0xff0000) >> 16) | ((buffer[0] & 0xff) << 16);
+					buffer++;
+				},
+				w);			
+		}
+		break;
 	case X8R8G8B8: {
 			IUINT32 *dst = (IUINT32*)bits + x;
 			ILINS_LOOP_DOUBLE( 
@@ -1720,7 +1775,8 @@ void BasicBitmap::Store(PixelFmt fmt, void *bits, int x, int w, const IUINT32 *b
 					buffer++;
 				},
 				w);
-	}
+		}
+		break;
 	case UNKNOW: 
 		break;
 	}
@@ -1752,6 +1808,7 @@ int BasicBitmap::Fmt2Bpp(PixelFmt fmt)
 	int bpp = 0;
 	switch (fmt) {
 	case A8R8G8B8: bpp = 32; break;
+	case A8B8G8R8: bpp = 32; break;
 	case X8R8G8B8: bpp = 32; break;
 	case R8G8B8: bpp = 24; break;
 	case R5G6B5: bpp = 16; break;
@@ -2057,6 +2114,7 @@ static int pixel_span_draw_proc_##fmt##_2(void *bits, \
 } 
 
 PIXEL_SPAN_DRAW_PROC_N(A8R8G8B8, 32, 4, NORMAL_FAST)
+PIXEL_SPAN_DRAW_PROC_N(A8B8G8R8, 32, 4, NORMAL_FAST)
 PIXEL_SPAN_DRAW_PROC_N(X8R8G8B8, 32, 4, STATIC)
 
 PIXEL_SPAN_DRAW_PROC_N(R8G8B8, 24, 3, STATIC)
@@ -2090,6 +2148,11 @@ BasicBitmap::PixelDraw BasicBitmap::GetDriver(BasicBitmap::PixelFmt fmt, int mod
 		if (mode == 0) proc = pixel_span_draw_proc_A8R8G8B8_0;
 		else if (mode == 1) proc = pixel_span_draw_proc_A8R8G8B8_1;
 		else proc = pixel_span_draw_proc_A8R8G8B8_2;
+		break;
+	case A8B8G8R8: 
+		if (mode == 0) proc = pixel_span_draw_proc_A8B8G8R8_0;
+		else if (mode == 1) proc = pixel_span_draw_proc_A8B8G8R8_1;
+		else proc = pixel_span_draw_proc_A8B8G8R8_2;
 		break;
 	case X8R8G8B8:
 		if (mode == 0) proc = pixel_span_draw_proc_X8R8G8B8_0;
@@ -4050,6 +4113,10 @@ void BasicBitmap::InitDIBInfo(void *ptr, int width, int height, PixelFmt fmt)
 		case A8R8G8B8:
 			data[10] = 0xff0000; data[11] = 0xff00; 
 			data[12] = 0xff; data[13] = 0xff000000;
+			break;
+		case A8B8G8R8:
+			data[10] = 0xff; data[11] = 0xff00; 
+			data[12] = 0xff0000; data[13] = 0xff000000;
 			break;
 		case G8:
 		case UNKNOW:

@@ -506,14 +506,15 @@ public:
 	// format of color elements
 	enum PixelFmt { 
 		A8R8G8B8 = 0, 
-		X8R8G8B8 = 1, 
-		R8G8B8 = 2,
-		R5G6B5 = 3, 
-		A1R5G5B5 = 4, 
-		X1R5G5B5 = 5,
-		A4R4G4B4 = 6,
-		G8 = 7,
-		UNKNOW = 8,
+		A8B8G8R8 = 1,
+		X8R8G8B8 = 2, 
+		R8G8B8 = 3,
+		R5G6B5 = 4, 
+		A1R5G5B5 = 5, 
+		X1R5G5B5 = 6,
+		A4R4G4B4 = 7,
+		G8 = 8,
+		UNKNOW = 9,
 	};
 	
 	// create new bitmap, default pixel format is A8R8G8B8 
