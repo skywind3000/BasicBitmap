@@ -2742,7 +2742,7 @@ void BasicBitmap::FlipVertical()
 		internal_memcpy(Line(y1), Line(y2), _pitch);
 		internal_memcpy(Line(y2), buffer, _pitch);
 	}
-	delete buffer;
+	delete []buffer;
 }
 
 
@@ -5548,35 +5548,35 @@ int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidt
 		if (dstheight < srcheight) {
 			if (BasicBitmap_ResampleShrinkY_Ptr(dstpix, srcpix, srcwidth, dstpitch, 
 				srcpitch, dstheight, srcheight, workmem) != 0) {
-				delete temp;
+				delete []temp;
 				return -2;
 			}
 		}
 		else if (dstheight > srcheight) {
 			if (BasicBitmap_ResampleExpandY_Ptr(dstpix, srcpix, srcwidth, dstpitch,
 				srcpitch, dstheight, srcheight, workmem) != 0) {
-				delete temp;
+				delete []temp;
 				return -3;
 			}
 		}
 		else {
 			assert(0);
 		}
-		delete temp;
+		delete []temp;
 		return 0;
 	}
 
 	if (dstheight < srcheight) {
 		if (BasicBitmap_ResampleShrinkY_Ptr(temp, srcpix, srcwidth, srcwidth * 4, 
 			srcpitch, dstheight, srcheight, workmem) != 0) {
-			delete temp;
+			delete []temp;
 			return -4;
 		}
 	}
 	else if (dstheight > srcheight) {
 		if (BasicBitmap_ResampleExpandY_Ptr(temp, srcpix, srcwidth, srcwidth * 4,
 			srcpitch, dstheight, srcheight, workmem) != 0) {
-			delete temp;
+			delete []temp;
 			return -5;
 		}
 	}
@@ -5584,35 +5584,35 @@ int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidt
 		if (dstwidth < srcwidth) {
 			if (BasicBitmap_ResampleShrinkX_Ptr(dstpix, srcpix, dstheight, dstpitch, 
 				srcpitch, dstwidth, srcwidth, workmem) != 0) {
-				delete temp;
+				delete []temp;
 				return -6;
 			}
 		}
 		else if (dstwidth > srcwidth) {
 			if (BasicBitmap_ResampleExpandX_Ptr(dstpix, srcpix, dstheight, dstpitch, 
 				srcpitch, dstwidth, srcwidth, workmem) != 0) {
-				delete temp;
+				delete []temp;
 				return -7;
 			}
 		}
 		else {
 			assert(0);
 		}
-		delete temp;
+		delete []temp;
 		return 0;	
 	}
 
 	if (dstwidth < srcwidth) {
 		if (BasicBitmap_ResampleShrinkX_Ptr(dstpix, temp, dstheight, dstpitch, 
 			srcwidth * 4, dstwidth, srcwidth, workmem) != 0) {
-			delete temp;
+			delete []temp;
 			return -8;
 		}
 	}
 	else if (dstwidth > srcwidth) {
 		if (BasicBitmap_ResampleExpandX_Ptr(dstpix, temp, dstheight, dstpitch, 
 			srcwidth * 4, dstwidth, srcwidth, workmem) != 0) {
-			delete temp;
+			delete []temp;
 			return -9;
 		}
 	}
@@ -5623,7 +5623,7 @@ int BasicBitmap_ResampleSmooth(IUINT8 *dstpix, const IUINT8 *srcpix, int dstwidt
 		}
 	}
 
-	delete temp;
+	delete []temp;
 
 	return 0;
 }
