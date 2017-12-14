@@ -528,7 +528,7 @@ public:
 	BasicBitmap(const BasicBitmap &src);
 
 private:
-	// prevent copy assignment by declaring in private without implementation
+	// copy assignment is not allowed here
 	BasicBitmap& operator=(const BasicBitmap &);	
 
 public:
