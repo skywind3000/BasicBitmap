@@ -524,6 +524,9 @@ public:
 	// you must free external mem manually after destructor
 	BasicBitmap(int width, int height, PixelFmt fmt, void *mem, long pitch);
 
+	// copy constructor
+	BasicBitmap(const BasicBitmap &src);
+
 public:
 
 	void Fill(int x, int y, int w, int h, IUINT32 color);
