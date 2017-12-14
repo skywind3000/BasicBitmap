@@ -527,6 +527,10 @@ public:
 	// copy constructor
 	BasicBitmap(const BasicBitmap &src);
 
+private:
+	// prevent copy assignment by declaring in private without implementation
+	BasicBitmap& operator=(const BasicBitmap &src);	
+
 public:
 
 	void Fill(int x, int y, int w, int h, IUINT32 color);
