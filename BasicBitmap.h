@@ -529,7 +529,7 @@ public:
 
 private:
 	// prevent copy assignment by declaring in private without implementation
-	BasicBitmap& operator=(const BasicBitmap &src);	
+	BasicBitmap& operator=(const BasicBitmap &);	
 
 public:
 
