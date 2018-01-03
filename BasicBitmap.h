@@ -84,7 +84,7 @@
 
 #ifndef __IINT8_DEFINED
     #define __IINT8_DEFINED
-    typedef char IINT8;
+    typedef signed char IINT8;
 #endif
 
 #ifndef __IUINT8_DEFINED
@@ -99,7 +99,7 @@
 
 #ifndef __IINT16_DEFINED
     #define __IINT16_DEFINED
-    typedef short IINT16;
+    typedef signed short IINT16;
 #endif
 
 #ifndef __IINT32_DEFINED
