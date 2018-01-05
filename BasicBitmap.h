@@ -179,7 +179,7 @@ typedef unsigned long long IUINT64;
 #endif
 #endif
 
-#ifndef inline
+#if (!defined(inline)) && (!defined(__cplusplus))
 #define inline INLINE
 #endif
 
