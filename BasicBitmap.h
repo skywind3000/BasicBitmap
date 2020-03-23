@@ -29,8 +29,8 @@
 // 2011.2.13  skywind  immigrate tga/bmp loader
 //
 //=====================================================================
-#ifndef __BASIC_BITMAP_H__
-#define __BASIC_BITMAP_H__
+#ifndef _BASIC_BITMAP_H_
+#define _BASIC_BITMAP_H_
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -535,9 +535,14 @@ public:
 	// copy constructor
 	BasicBitmap(const BasicBitmap &src);
 
+	// move constructor
+	#if __cplusplus >= 201103 || (defined(_MSC_VER) && _MSC_VER >= 1900)
+	BasicBitmap(BasicBitmap &&src);
+	#endif
+
 private:
 	// copy assignment is not allowed here
-	BasicBitmap& operator=(const BasicBitmap &);	
+	BasicBitmap& operator=(const BasicBitmap &src);
 
 public:
 
