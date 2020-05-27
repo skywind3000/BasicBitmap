@@ -24,8 +24,9 @@
 // external implementations (sse2 eg.) using SetDriver/SetFunction.
 //
 // INTERFACES:
-//  - Fill: fill color
-//  - Clear: clear
+//
+//  - Fill: fill color in rectangle
+//  - Clear: clear the whole bitmap
 //  - Blit: blit from source bitmap with same bpp
 //  - Convert: convert from different pixel-format
 //  - SetPixel: draw pixel in raw color
@@ -53,6 +54,7 @@
 //  - CreateBitmapInDIB: (windows) create bitmap with DIB section
 //
 // HISTORY:
+//
 // 2011.2.9   skywind  create this file based on a subset of pixellib
 // 2011.2.11  skywind  immigrate blitting/blending/convertion/scaling
 // 2011.2.13  skywind  immigrate tga/bmp loader
