@@ -11,6 +11,7 @@
 // of my vector graphic library: https://code.google.com/p/pixellib
 // 
 // FEATURES:
+//
 //  - common pixel format supported (from A8R8G8B8 to A4R4G4B4)
 //  - blitting with or without a transparent color
 //  - converting between different pixel formats
