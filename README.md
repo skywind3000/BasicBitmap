@@ -1,7 +1,9 @@
 # BasicBitmap
+
 As the purpose of providing a simple compact, high-performance and platform independent Bitmap library, BasicBitmap is created based on a subset of my vector graphic library: https://github.com/skywind3000/pixellib .
 
-# Features
+## Features
+
 - Highly optimized C++ code which could be compiled and executed in any platform
 - Multiple pixel formats from 8 to 32 bits: A8R8G8B8, R8G8B8, A4R4G4B4, R5G6B5, A8, etc.
 - Blit in opaque or transparent mode (with a maskcolor/colorkey)
@@ -18,8 +20,43 @@ As the purpose of providing a simple compact, high-performance and platform inde
 - Blitting is 40% faster than DirectDraw FastBlt (with AVX/SSE2 optimizing enabled).
 - Blending is 34% faster than GDI's AlphaBlend (with SSE2 enabled).
 
+## Interfaces
 
-# Performance
+The `BasicBitmap` class has these public methods below:
+
+| Method | Description |
+|-|-|
+| Fill | fill color in rectangle |
+| Clear | clear the whole bitmap |
+| Blit | blit from source bitmap with same bpp |
+| Convert | convert from different pixel-format |
+| SetPixel | draw pixel in raw color |
+| GetPixel | read pixel in raw color |
+| SetColor | draw pixel in A8R8G8B8 |
+| GetColor | read pixel in A8R8G8B8 |
+| Scale | scale bitmap using different filter and blend op |
+| DrawLine | draw a line |
+| QuickText | draw text with internal mini-8x8 ascii font |
+| SampleBilinear | sample pixel with bilinear |
+| SampleBicubic | sample pixel with bicubic |
+| Resample | resample bitmap |
+| LoadBmpFromMemory | load bmp file from memory |
+| LoadTgaFromMemory | load tga file from memory |
+| LoadBmp | load bmp file |
+| LoadTga | load tga file |
+| SaveBmp | save bmp file |
+| SavePPM | save ppm file |
+| DownSampleBy2 | down sample 2x2 pixels into one pixel |
+| SetDIBitsToDevice | (windows) draw bitmap to hdc |
+| GetDIBits | (windows) get DIB bits to bitmap |
+| GdiPlusInit | (windows) initialize gdiplus |
+| GdiPlusLoadImageFromMemory | (windows) load jpg/png from memory |
+| GdiPlusLoadImage | (windows) use gdiplus to load jpg/png |
+| CreateBitmapInDIB | (windows) create bitmap with DIB section |
+
+
+
+## Performance
 
 Blit Performance
 ----------------
