@@ -5862,7 +5862,7 @@ int BasicBitmap_ResampleAvg(BasicBitmap *dst, int dx, int dy, int dw, int dh,
 
 	bs->Convert(0, 0, src, 0, 0, srcwidth, srcheight);
 
-	int hr = BasicBitmap_ResampleSmooth(bs->Address8(0, 0), bd->Address8(0, 0),
+	int hr = BasicBitmap_ResampleSmooth(bd->Address8(0, 0), bs->Address8(0, 0),
 		dstwidth, srcwidth, dstheight, srcheight, bd->Pitch(), bs->Pitch());
 
 	if (hr == 0) {
