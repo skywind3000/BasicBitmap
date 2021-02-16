@@ -22,7 +22,7 @@ As the purpose of providing a simple compact, high-performance and platform inde
 
 ## Interfaces
 
-The `BasicBitmap` class has these public methods below:
+The `BasicBitmap` class provides these public methods below:
 
 | Method | Description |
 |-|-|
